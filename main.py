@@ -5,7 +5,7 @@ from court_line_detector.court_line_detector import CourtLineDetector
 import cv2
 
 # ── Paths (update these) ──────────────────────────────────────────────
-INPUT_VIDEO   = 'input_videos/test_match.mp4'
+INPUT_VIDEO   = 'input_videos/input_video.mp4'
 OUTPUT_VIDEO  = 'output_videos/output.avi'
 BALL_MODEL    = 'models/yolo5_last.pt'
 COURT_MODEL   = 'models/keypoints_model.pth'
@@ -66,3 +66,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

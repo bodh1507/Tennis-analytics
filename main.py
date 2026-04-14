@@ -1,4 +1,6 @@
 import torch, functools
+
+# Fix for PyTorch 2.6 weights_only change
 _real_load = torch.load
 @functools.wraps(_real_load)
 def _patched(*args, **kwargs):
@@ -25,63 +27,73 @@ OUTPUT_VIDEO = 'output_videos/output.avi'
 BALL_MODEL   = 'models/yolo5_last.pt'
 COURT_MODEL  = 'models/keypoints_model.pth'
 
-# Real court keypoints in cm (scale=100 px/m)
+# Real court keypoints in cm (100 px per meter scale)
+# 14 points: corners, net ends, service box corners, center points
 COURT_PTS_REAL = np.array([
-    [0,    0   ], [1097, 0   ],
-    [0,    2377 ], [1097, 2377],
-    [0,    1188 ], [1097, 1188],
-    [200,  548  ], [897,  548 ],
-    [200,  1829 ], [897,  1829],
-    [548,  0    ], [548,  2377],
-    [548,  548  ], [548,  1829],
+    [0,    0   ], [1097, 0   ],   # 0,1  top baseline
+    [0,    2377 ], [1097, 2377],  # 2,3  bottom baseline
+    [0,    1188 ], [1097, 1188],  # 4,5  net ends
+    [200,  548  ], [897,  548 ],  # 6,7  service top
+    [200,  1829 ], [897,  1829],  # 8,9  service bottom
+    [548,  0    ], [548,  2377],  # 10,11 center top/bottom
+    [548,  548  ], [548,  1829],  # 12,13 service center
 ], dtype=np.float32)
 
 
 def compute_homography(court_keypoints_pixels):
+    """Compute homography from pixel keypoints to real court coordinates"""
     src = court_keypoints_pixels.reshape(14, 2).astype(np.float32)
     H, _ = cv2.findHomography(src, COURT_PTS_REAL)
     return H
 
 
 def get_ball_speed(ball_dets, frame_idx, H, fps):
+    """Calculate ball speed in km/h between consecutive frames"""
     if frame_idx == 0:
         return None
-    prev = ball_dets[frame_idx-1]
+    prev = ball_dets[frame_idx - 1]
     curr = ball_dets[frame_idx]
     if not prev or not curr:
         return None
+
     bbox_prev = list(prev.values())[0]
     bbox_curr = list(curr.values())[0]
-    cx_p = (bbox_prev[0]+bbox_prev[2])/2
-    cy_p = (bbox_prev[1]+bbox_prev[3])/2
-    cx_c = (bbox_curr[0]+bbox_curr[2])/2
-    cy_c = (bbox_curr[1]+bbox_curr[3])/2
+
+    cx_p = (bbox_prev[0] + bbox_prev[2]) / 2
+    cy_p = (bbox_prev[1] + bbox_prev[3]) / 2
+    cx_c = (bbox_curr[0] + bbox_curr[2]) / 2
+    cy_c = (bbox_curr[1] + bbox_curr[3]) / 2
+
     real_p = pixel_to_real((cx_p, cy_p), H)
     real_c = pixel_to_real((cx_c, cy_c), H)
+
     if real_p is None or real_c is None:
         return None
+
     dist = measure_distance(real_p, real_c)
-    speed = dist / (1/fps) * 3.6
-    return min(speed, 250.0)  # cap at 250 km/h
+    speed = dist / (1.0 / fps) * 3.6
+    return min(speed, 250.0)   # cap at 250 km/h (serve speed record ~263)
 
 
 def main():
     print("📹 Reading video...")
     frames = read_video(INPUT_VIDEO)
     fps = 25
-    print(f"   {len(frames)} frames")
+    print(f"   {len(frames)} frames loaded")
 
     print("🔍 Detecting players...")
     player_tracker = PlayerTracker('yolov8x.pt')
     player_dets = player_tracker.detect_frames(
-        frames, read_from_stub=True,
+        frames,
+        read_from_stub=True,
         stub_path='tracker_stubs/player_detections.pkl'
     )
 
     print("🎾 Detecting ball...")
     ball_tracker = BallTracker(BALL_MODEL)
     ball_dets = ball_tracker.detect_frames(
-        frames, read_from_stub=True,
+        frames,
+        read_from_stub=True,
         stub_path='tracker_stubs/ball_detections.pkl'
     )
     ball_dets = ball_tracker.interpolate_ball_positions(ball_dets)
@@ -93,28 +105,28 @@ def main():
     print("📐 Computing homography...")
     H = compute_homography(court_keypoints)
 
-    print("✏️  Filtering players...")
+    print("✏️  Filtering to 2 players...")
     player_dets = player_tracker.choose_players(court_keypoints, player_dets)
 
     print("📊 Computing player speeds...")
     player_speeds = compute_player_speeds(player_dets, H, fps)
 
-    print("🎬 Rendering output...")
+    print("🎬 Rendering output video...")
     output_frames = []
     for i, frame in enumerate(frames):
-        # detections
+        # draw detections
         frame = draw_player_bboxes(frame, player_dets[i])
         frame = draw_ball_bbox(frame, ball_dets[i])
         frame = draw_court_keypoints(frame, court_keypoints)
 
-        # ball speed
+        # compute ball speed
         ball_speed = get_ball_speed(ball_dets, i, H, fps)
 
-        # player stats panel
+        # draw stats panels
         frame = draw_stats_panel(frame, player_speeds[i] if i < len(player_speeds) else {})
         frame = draw_ball_speed(frame, ball_speed)
 
-        # mini court
+        # mini court bird's eye view
         player_pos_m = {}
         for pid, bbox in player_dets[i].items():
             foot = get_foot_position(bbox)
@@ -125,18 +137,18 @@ def main():
         ball_pos_m = None
         if ball_dets[i]:
             bbox = list(ball_dets[i].values())[0]
-            cx = (bbox[0]+bbox[2])/2
-            cy = (bbox[1]+bbox[3])/2
-            ball_pos_m = pixel_to_real((cx,cy), H)
+            cx = (bbox[0] + bbox[2]) / 2
+            cy = (bbox[1] + bbox[3]) / 2
+            ball_pos_m = pixel_to_real((cx, cy), H)
 
         frame = draw_mini_court(frame, player_pos_m, ball_pos_m)
-
         output_frames.append(frame)
+
         if i % 50 == 0:
-            print(f"   frame {i}/{len(frames)}")
+            print(f"   rendered {i}/{len(frames)} frames...")
 
     save_video(output_frames, OUTPUT_VIDEO)
-    print("✅ Done! →", OUTPUT_VIDEO)
+    print(f"✅ Done! Output saved to {OUTPUT_VIDEO}")
 
 
 if __name__ == '__main__':

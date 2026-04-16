@@ -84,6 +84,20 @@ def main():
 
     print("📊 Computing player speeds...")
     player_speeds = compute_player_speeds(player_dets, H, FPS)
+    selected_player_ids = sorted({
+        pid
+        for frame_dets in player_dets
+        for pid in frame_dets.keys()
+    })[:2]
+    running_player_stats = {
+        pid: {
+            'speed_kmh': 0.0,
+            'shot_speed_kmh': 0.0,
+            'avg_speed': 0.0,
+            'avg_shot_speed': 0.0,
+        }
+        for pid in selected_player_ids
+    }
 
     # running averages for ball shot speed
     ball_speed_history = []
@@ -102,21 +116,29 @@ def main():
         if ball_speed is not None:
             ball_speed_history.append(ball_speed)
 
-        # build per-frame stats for table
-        frame_stats = player_speeds[i] if i < len(player_speeds) else {}
+        # build per-frame stats for table, carrying previous values so both
+        # player columns stay visible on every frame.
+        frame_stats = {
+            pid: stats.copy()
+            for pid, stats in running_player_stats.items()
+        }
+        current_speed_stats = player_speeds[i] if i < len(player_speeds) else {}
+        for pid, stats in current_speed_stats.items():
+            if pid in running_player_stats:
+                running_player_stats[pid].update(stats)
+                frame_stats[pid].update(stats)
 
         # inject ball speed into stats
-        pids = list(frame_stats.keys())
         avg_ball = (sum(ball_speed_history)/len(ball_speed_history)
                     if ball_speed_history else None)
-        for pid in pids:
-            frame_stats[pid]['shot_speed_kmh'] = ball_speed
+        shot_speed = round(ball_speed, 1) if ball_speed else 0.0
+        avg_shot_speed = round(avg_ball, 1) if avg_ball else 0.0
+        for pid in selected_player_ids:
+            frame_stats[pid]['shot_speed_kmh'] = shot_speed
             frame_stats[pid]['avg_shot_speed'] = (
-                round(avg_ball, 1) if avg_ball else None
+                avg_shot_speed
             )
-
-        # draw stats table
-        frame = draw_stats_table(frame, frame_stats, ball_speed_history, i)
+            running_player_stats[pid].update(frame_stats[pid])
 
         # mini court
         player_pos_m = {}
@@ -133,6 +155,9 @@ def main():
             )
 
         frame = draw_mini_court(frame, player_pos_m, ball_pos_m)
+        frame = draw_stats_table(
+            frame, frame_stats, ball_speed_history, i, selected_player_ids
+        )
         output_frames.append(frame)
 
         if i % 50 == 0:

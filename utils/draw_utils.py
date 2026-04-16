@@ -44,7 +44,7 @@ def draw_frame_number(frame, frame_idx):
     return frame
 
 
-def draw_stats_table(frame, player_stats, ball_speeds, frame_idx):
+def draw_stats_table(frame, player_stats, ball_speeds, frame_idx, player_ids=None):
     """
     Draw a stats table in bottom-right like the reference output.
     Shows Shot Speed, Player Speed, Avg Shot Speed, Avg Player Speed
@@ -52,17 +52,19 @@ def draw_stats_table(frame, player_stats, ball_speeds, frame_idx):
     """
     h, w = frame.shape[:2]
 
-    # collect player IDs (sorted so P1 always left, P2 always right)
-    pids = sorted(player_stats.keys()) if player_stats else []
+    # Keep both table columns visible even when one player has no fresh speed
+    # update on the current frame.
+    pids = list(player_ids) if player_ids else sorted(player_stats.keys()) if player_stats else []
     while len(pids) < 2:
         pids.append(None)
+    pids = pids[:2]
 
     # table dimensions and position: below the top-right mini court.
     tw, th = 230, 130
     mini_h = 300
     pad = 15
     gap = 25
-    tx = w - tw - 20
+    tx = w - tw - pad
     ty = pad + mini_h + gap
     if ty + th > h - 20:
         ty = h - th - 20

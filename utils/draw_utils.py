@@ -2,6 +2,33 @@ import cv2
 import numpy as np
 
 
+def draw_ball_trail(frame, ball_trail, max_points=18):
+    """Draw a fading trail for recent ball positions."""
+    recent = ball_trail[-max_points:]
+    for i in range(1, len(recent)):
+        alpha = i / max(1, len(recent) - 1)
+        color = (0, int(180 + 75 * alpha), 255)
+        thickness = max(1, int(1 + 3 * alpha))
+        cv2.line(frame, recent[i - 1], recent[i], color, thickness)
+    for i, point in enumerate(recent):
+        alpha = (i + 1) / max(1, len(recent))
+        cv2.circle(frame, point, max(2, int(5 * alpha)), (0, 255, 255), -1)
+    return frame
+
+
+def draw_player_trails(frame, player_trails, max_points=24):
+    """Draw short movement trails for each selected player."""
+    colors = [(0, 200, 100), (255, 100, 0)]
+    for idx, (pid, trail) in enumerate(sorted(player_trails.items())):
+        recent = trail[-max_points:]
+        color = colors[idx % len(colors)]
+        for i in range(1, len(recent)):
+            alpha = i / max(1, len(recent) - 1)
+            faded = tuple(int(c * alpha + 40 * (1 - alpha)) for c in color)
+            cv2.line(frame, recent[i - 1], recent[i], faded, 2)
+    return frame
+
+
 def draw_player_bboxes(frame, player_dets):
     """Draw red bounding boxes with Player ID labels"""
     for track_id, bbox in player_dets.items():
@@ -60,7 +87,7 @@ def draw_stats_table(frame, player_stats, ball_speeds, frame_idx, player_ids=Non
     pids = pids[:2]
 
     # table dimensions and position: below the top-right mini court.
-    tw, th = 230, 130
+    tw, th = 275, 190
     mini_h = 300
     pad = 15
     gap = 25
@@ -75,38 +102,46 @@ def draw_stats_table(frame, player_stats, ball_speeds, frame_idx, player_ids=Non
     cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
 
     # header
-    cv2.putText(frame, 'Player 1', (tx+80, ty+22),
+    cv2.putText(frame, 'Player 1', (tx+95, ty+22),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255,255,255), 1)
-    cv2.putText(frame, 'Player 2', (tx+155, ty+22),
+    cv2.putText(frame, 'Player 2', (tx+185, ty+22),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255,255,255), 1)
 
     # divider line
     cv2.line(frame, (tx+5, ty+30), (tx+tw-5, ty+30), (100,100,100), 1)
 
     rows = [
-        ('Shot Speed',    'shot_speed_kmh'),
-        ('Player Speed',  'speed_kmh'),
-        ('avg. S. Speed', 'avg_shot_speed'),
-        ('avg. P. Speed', 'avg_speed'),
+        ('Shot Speed',   'shot_speed_kmh', 'km/h'),
+        ('Max Shot',     'max_shot_speed', 'km/h'),
+        ('Player Speed', 'speed_kmh', 'km/h'),
+        ('Max Player',   'max_speed', 'km/h'),
+        ('Avg Player',   'avg_speed', 'km/h'),
+        ('Distance',     'distance_m', 'm'),
+        ('Shots',        'shot_count', ''),
     ]
 
-    for r_idx, (label, key) in enumerate(rows):
-        y = ty + 50 + r_idx * 22
+    for r_idx, (label, key, unit) in enumerate(rows):
+        y = ty + 48 + r_idx * 20
         cv2.putText(frame, label, (tx+5, y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200,200,200), 1)
 
         for p_idx, pid in enumerate(pids):
-            x = tx + 78 + p_idx * 75
+            x = tx + 95 + p_idx * 90
             if pid is not None and pid in player_stats and key in player_stats[pid]:
                 val = player_stats[pid][key]
                 if val is not None:
-                    txt = f'{val:.1f} km/h'
+                    if key == 'shot_count':
+                        txt = str(int(val))
+                    elif unit:
+                        txt = f'{val:.1f} {unit}'
+                    else:
+                        txt = f'{val:.1f}'
                 else:
-                    txt = '0.0 km/h'
+                    txt = f'0.0 {unit}'.strip()
             else:
-                txt = '0.0 km/h'
+                txt = f'0.0 {unit}'.strip()
             color = (255, 255, 255)
             cv2.putText(frame, txt, (x, y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.34, color, 1)
 
     return frame

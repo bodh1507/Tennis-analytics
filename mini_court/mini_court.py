@@ -29,7 +29,8 @@ def meters_to_mini(x_m, y_m):
     return (px, py)
 
 
-def draw_mini_court(frame, player_positions_meters, ball_position_meters):
+def draw_mini_court(frame, player_positions_meters, ball_position_meters,
+                    bounce_points_meters=None):
     """
     Draw a bird's-eye-view mini court in the bottom-right corner of the frame.
 
@@ -37,6 +38,7 @@ def draw_mini_court(frame, player_positions_meters, ball_position_meters):
         frame: current video frame (numpy array)
         player_positions_meters: {player_id: (x_m, y_m)}
         ball_position_meters: (x_m, y_m) or None
+        bounce_points_meters: [(x_m, y_m), ...] or None
 
     Returns:
         frame with mini court overlay
@@ -91,6 +93,12 @@ def draw_mini_court(frame, player_positions_meters, ball_position_meters):
     if ball_position_meters is not None:
         bx, by = meters_to_mini(ball_position_meters[0], ball_position_meters[1])
         cv2.circle(mini, (bx, by), 4, (0, 255, 255), -1)
+
+    if bounce_points_meters:
+        for point in bounce_points_meters[-20:]:
+            bx, by = meters_to_mini(point[0], point[1])
+            cv2.circle(mini, (bx, by), 3, (0, 165, 255), -1)
+            cv2.circle(mini, (bx, by), 5, (0, 165, 255), 1)
 
     # ── Paste mini court onto bottom-right of main frame ─────────────
     x_off = w - MINI_W - PAD

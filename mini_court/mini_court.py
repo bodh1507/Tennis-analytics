@@ -6,9 +6,10 @@ COURT_W = 10.97   # doubles width
 COURT_H = 23.77   # full court length
 
 # ── Mini court canvas size (pixels) ──────────────────────────────────
-MINI_W  = 200
-MINI_H  = 420
-MARGIN  = 15
+MINI_W  = 150
+MINI_H  = 300
+MARGIN  = 10
+PAD     = 15
 
 # Scale factors: pixels per meter on the mini court drawing
 SCALE_X = (MINI_W - 2 * MARGIN) / COURT_W
@@ -92,9 +93,8 @@ def draw_mini_court(frame, player_positions_meters, ball_position_meters):
         cv2.circle(mini, (bx, by), 4, (0, 255, 255), -1)
 
     # ── Paste mini court onto bottom-right of main frame ─────────────
-    pad = 15
-    x_off = w - MINI_W - pad
-    y_off = h - MINI_H - pad
+    x_off = w - MINI_W - PAD
+    y_off = PAD
 
     # draw a subtle border around the mini court
     cv2.rectangle(frame,

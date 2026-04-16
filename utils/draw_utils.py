@@ -57,10 +57,15 @@ def draw_stats_table(frame, player_stats, ball_speeds, frame_idx):
     while len(pids) < 2:
         pids.append(None)
 
-    # table dimensions
-    tw, th = 380, 130
+    # table dimensions and position: below the top-right mini court.
+    tw, th = 230, 130
+    mini_h = 300
+    pad = 15
+    gap = 25
     tx = w - tw - 20
-    ty = h - th - 20
+    ty = pad + mini_h + gap
+    if ty + th > h - 20:
+        ty = h - th - 20
 
     # semi-transparent background
     overlay = frame.copy()
@@ -68,10 +73,10 @@ def draw_stats_table(frame, player_stats, ball_speeds, frame_idx):
     cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
 
     # header
-    cv2.putText(frame, 'Player 1', (tx+100, ty+22),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
-    cv2.putText(frame, 'Player 2', (tx+240, ty+22),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255,255,255), 1)
+    cv2.putText(frame, 'Player 1', (tx+80, ty+22),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255,255,255), 1)
+    cv2.putText(frame, 'Player 2', (tx+155, ty+22),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255,255,255), 1)
 
     # divider line
     cv2.line(frame, (tx+5, ty+30), (tx+tw-5, ty+30), (100,100,100), 1)
@@ -86,20 +91,20 @@ def draw_stats_table(frame, player_stats, ball_speeds, frame_idx):
     for r_idx, (label, key) in enumerate(rows):
         y = ty + 50 + r_idx * 22
         cv2.putText(frame, label, (tx+5, y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (200,200,200), 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200,200,200), 1)
 
         for p_idx, pid in enumerate(pids):
-            x = tx + 105 + p_idx * 140
+            x = tx + 78 + p_idx * 75
             if pid is not None and pid in player_stats and key in player_stats[pid]:
                 val = player_stats[pid][key]
                 if val is not None:
                     txt = f'{val:.1f} km/h'
                 else:
-                    txt = 'nan km/h'
+                    txt = '0.0 km/h'
             else:
-                txt = 'nan km/h'
-            color = (0, 255, 0) if 'nan' not in txt else (150, 150, 150)
+                txt = '0.0 km/h'
+            color = (255, 255, 255)
             cv2.putText(frame, txt, (x, y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1)
 
     return frame

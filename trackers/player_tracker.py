@@ -9,11 +9,6 @@ class PlayerTracker:
         self.model = YOLO(model_path)
 
     def detect_frames(self, frames, read_from_stub=False, stub_path=None):
-        """
-        Detect and track players across all frames.
-        Returns list of dicts: [{track_id: [x1,y1,x2,y2]}, ...]
-        Uses stub (pickle cache) to avoid re-running YOLO every time.
-        """
         if read_from_stub and stub_path and os.path.exists(stub_path):
             print(f"  Loading player detections from stub: {stub_path}")
             with open(stub_path, 'rb') as f:
@@ -28,50 +23,57 @@ class PlayerTracker:
             os.makedirs(os.path.dirname(stub_path) if os.path.dirname(stub_path) else '.', exist_ok=True)
             with open(stub_path, 'wb') as f:
                 pickle.dump(player_detections, f)
-            print(f"  Player detections saved to stub: {stub_path}")
 
         return player_detections
 
     def detect_frame(self, frame):
-        """
-        Run YOLO tracking on a single frame.
-        Returns {track_id: [x1, y1, x2, y2]}
-        """
-        results = self.model.track(frame, persist=True, conf=0.3)[0]
+        # conf=0.2 lower threshold catches the far/small player
+        results = self.model.track(frame, persist=True, conf=0.2)[0]
         players = {}
-
         if results.boxes is None:
             return players
-
         for box in results.boxes:
             if box.id is None:
+                continue
+            # only keep 'person' class (class 0 in COCO)
+            if int(box.cls[0]) != 0:
                 continue
             track_id = int(box.id.tolist()[0])
             bbox = box.xyxy.tolist()[0]
             players[track_id] = bbox
-
         return players
 
     def choose_players(self, court_keypoints, player_detections):
         """
-        Filter detections to keep only the 2 actual players.
-        Removes ball kids, referees, spectators by picking the 2
-        people closest to the court keypoints in the first frame.
+        Pick the 2 players closest to court across ALL frames,
+        not just the first frame — fixes single player detection.
         """
-        first_frame = player_detections[0]
-        court_pts = [(int(court_keypoints[i]), int(court_keypoints[i+1]))
-                     for i in range(0, len(court_keypoints), 2)]
+        court_pts = [
+            (int(court_keypoints[i]), int(court_keypoints[i+1]))
+            for i in range(0, len(court_keypoints), 2)
+        ]
 
-        # find minimum distance from each person to any court keypoint
-        min_dists = {}
-        for track_id, bbox in first_frame.items():
-            center = get_center_of_bbox(bbox)
-            dist = min(measure_distance(center, kp) for kp in court_pts)
-            min_dists[track_id] = dist
+        # accumulate distance scores across multiple frames
+        player_scores = {}
+        # check first 10 frames to be robust
+        for frame_dict in player_detections[:10]:
+            for track_id, bbox in frame_dict.items():
+                center = get_center_of_bbox(bbox)
+                dist = min(measure_distance(center, kp) for kp in court_pts)
+                if track_id not in player_scores:
+                    player_scores[track_id] = []
+                player_scores[track_id].append(dist)
 
-        # pick the 2 closest
-        sorted_ids = sorted(min_dists, key=min_dists.get)
+        # average distance per player
+        avg_scores = {
+            tid: sum(dists) / len(dists)
+            for tid, dists in player_scores.items()
+        }
+
+        # pick 2 with lowest average distance to court
+        sorted_ids = sorted(avg_scores, key=avg_scores.get)
         chosen_ids = set(sorted_ids[:2])
+        print(f"  Chosen player IDs: {chosen_ids}")
 
         # filter all frames
         filtered = []
@@ -81,5 +83,4 @@ class PlayerTracker:
                 for tid, bbox in frame_dict.items()
                 if tid in chosen_ids
             })
-
         return filtered
